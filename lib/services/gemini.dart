@@ -25,6 +25,16 @@ class Gemini {
     null,
   ];
   static final Map<String, int> _thinkMemo = {};
+  static List<String> _ranked = [];
+
+  /// موديل بديل لو الحالي عليه ضغط (كل موديل ليه حد وضغط منفصل).
+  Future<String?> _alternate(Set<String> tried) async {
+    if (_ranked.isEmpty) await _discoverModel();
+    for (final m in _ranked) {
+      if (!tried.contains(m) && m != model) return m;
+    }
+    return null;
+  }
   static int _defaultThinkIdx(String m) {
     final v = RegExp(r'gemini-(\d+)').firstMatch(m);
     final major = v == null ? 3 : int.parse(v.group(1)!);
@@ -46,8 +56,7 @@ class Gemini {
       final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
       final models = (data['models'] as List? ?? const []).whereType<Map>();
       const bad = ['image', 'tts', 'audio', 'live', 'embed', 'exp', 'native', 'robotics', 'computer'];
-      String? best;
-      double bestScore = -1;
+      final scored = <MapEntry<String, double>>[];
       for (final m in models) {
         final name = '${m['name'] ?? ''}'.replaceFirst('models/', '');
         final methods = (m['supportedGenerationMethods'] as List? ?? const []).map((e) => '$e');
@@ -65,12 +74,11 @@ class Gemini {
           if (name.contains('lite')) score -= 1;
           if (RegExp(r'-\d{3}$').hasMatch(name)) score -= 0.5;
         }
-        if (score > bestScore) {
-          bestScore = score;
-          best = name;
-        }
+        scored.add(MapEntry(name, score));
       }
-      return best;
+      scored.sort((a, b) => b.value.compareTo(a.value));
+      _ranked = scored.map((e) => e.key).toList();
+      return _ranked.isEmpty ? null : _ranked.first;
     } catch (_) {
       return null;
     }
@@ -81,6 +89,8 @@ class Gemini {
     required List<Map<String, dynamic>> contents,
     double temperature = 0.8,
     int? thinkIdx,
+    int attempt = 0,
+    Set<String>? tried,
   }) async {
     if (_key.isEmpty) {
       throw GeminiException('مفتاح الذكاء الاصطناعي مش متسجل. الأدمن لازم يحطه من الإعدادات.');
@@ -125,8 +135,25 @@ class Gemini {
       }
     }
     if (res.statusCode == 200) _thinkMemo[model] = idx;
-    if (res.statusCode == 429) {
-      throw GeminiException('وصلنا للحد المجاني المؤقت للذكاء الاصطناعي. استنى دقيقة وجرّب تاني.');
+
+    // ضغط على سيرفرات جوجل (503) أو الحد المؤقت (429): نعيد المحاولة، وبعدين نجرب موديل تاني
+    final busy = res.statusCode == 429 || res.statusCode == 500 || res.statusCode == 502 ||
+        res.statusCode == 503 || res.statusCode == 504;
+    if (busy) {
+      final t = {...?tried, model};
+      if (attempt < 2) {
+        await Future.delayed(Duration(milliseconds: 600 + attempt * 900));
+        return _generate(
+            system: system, contents: contents, temperature: temperature, attempt: attempt + 1, tried: t);
+      }
+      final alt = await _alternate(t);
+      if (alt != null && t.length < 4) {
+        model = alt;
+        return _generate(system: system, contents: contents, temperature: temperature, tried: t);
+      }
+      throw GeminiException(res.statusCode == 429
+          ? 'وصلنا للحد المجاني المؤقت للذكاء الاصطناعي. استنى دقيقة وجرّب تاني.'
+          : 'سيرفرات جوجل عليها ضغط دلوقتي. استنى ثواني ودوس "إعادة المحاولة".');
     }
     if (res.statusCode == 400 || res.statusCode == 403) {
       final txt = utf8.decode(res.bodyBytes);
