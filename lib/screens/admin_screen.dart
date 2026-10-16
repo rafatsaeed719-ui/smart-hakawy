@@ -248,9 +248,17 @@ class _SettingsTabState extends State<_SettingsTab> {
   Future<void> _saveAndTest() async {
     setState(() => _busy = true);
     try {
-      await Gemini(_key.text, _model.text.trim().isEmpty ? kDefaultModel : _model.text).test();
-      await Data.saveSettings(_key.text, _model.text);
-      if (mounted) toast(context, 'المفتاح شغال واتحفظ ✅');
+      final key = _key.text.replaceAll(RegExp(r'[^A-Za-z0-9_\-]'), '');
+      final ai = Gemini(key, _model.text.trim().isEmpty ? kDefaultModel : _model.text.trim());
+      await ai.test();
+      await Data.saveSettings(key, ai.model);
+      if (mounted) {
+        setState(() {
+          _key.text = key;
+          _model.text = ai.model;
+        });
+        toast(context, 'المفتاح شغال واتحفظ ✅ (${ai.model})');
+      }
     } catch (e) {
       if (mounted) toast(context, '$e', error: true);
     } finally {

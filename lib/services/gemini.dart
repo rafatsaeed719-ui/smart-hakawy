@@ -14,8 +14,54 @@ class GeminiException implements Exception {
 /// اتصال مباشر بـ Gemini API (بمفتاح الأدمن المحفوظ في الإعدادات).
 class Gemini {
   final String apiKey;
-  final String model;
+  String model;
+  bool _discovered = false;
   Gemini(this.apiKey, this.model);
+
+  /// المفتاح بعد شيل أي مسافات أو حروف اتكتبت بالغلط (زي حرف عربي من الكيبورد).
+  String get _key => apiKey.replaceAll(RegExp(r'[^A-Za-z0-9_\-]'), '');
+
+  /// لو الموديل اتوقف من جوجل: نجيب قائمة الموديلات المتاحة ونختار أحدث Flash.
+  Future<String?> _discoverModel() async {
+    _discovered = true;
+    try {
+      final res = await http.get(
+        Uri.parse('https://generativelanguage.googleapis.com/v1beta/models?pageSize=300'),
+        headers: {'x-goog-api-key': _key},
+      ).timeout(const Duration(seconds: 30));
+      if (res.statusCode != 200) return null;
+      final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      final models = (data['models'] as List? ?? const []).whereType<Map>();
+      const bad = ['image', 'tts', 'audio', 'live', 'embed', 'exp', 'native', 'robotics', 'computer'];
+      String? best;
+      double bestScore = -1;
+      for (final m in models) {
+        final name = '${m['name'] ?? ''}'.replaceFirst('models/', '');
+        final methods = (m['supportedGenerationMethods'] as List? ?? const []).map((e) => '$e');
+        if (!methods.contains('generateContent')) continue;
+        if (!name.startsWith('gemini') || !name.contains('flash')) continue;
+        if (bad.any(name.contains)) continue;
+        double score;
+        if (name == 'gemini-flash-latest') {
+          score = 10000;
+        } else {
+          final v = RegExp(r'gemini-(\d+(?:\.\d+)?)').firstMatch(name);
+          if (v == null) continue;
+          score = double.parse(v.group(1)!) * 10;
+          if (name.contains('preview')) score -= 4;
+          if (name.contains('lite')) score -= 1;
+          if (RegExp(r'-\d{3}$').hasMatch(name)) score -= 0.5;
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          best = name;
+        }
+      }
+      return best;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<Map<String, dynamic>> _generate({
     required String system,
@@ -23,7 +69,7 @@ class Gemini {
     double temperature = 0.8,
     bool noThinking = true,
   }) async {
-    if (apiKey.trim().isEmpty) {
+    if (_key.isEmpty) {
       throw GeminiException('مفتاح الذكاء الاصطناعي مش متسجل. الأدمن لازم يحطه من الإعدادات.');
     }
     final uri = Uri.parse(
@@ -48,7 +94,7 @@ class Gemini {
           .post(uri,
               headers: {
                 'Content-Type': 'application/json',
-                'x-goog-api-key': apiKey.trim(),
+                'x-goog-api-key': _key,
               },
               body: jsonEncode(body))
           .timeout(const Duration(seconds: 60));
@@ -74,6 +120,14 @@ class Gemini {
       }
     }
     if (res.statusCode == 404) {
+      if (!_discovered) {
+        final m = await _discoverModel();
+        if (m != null && m != model) {
+          model = m;
+          return _generate(
+              system: system, contents: contents, temperature: temperature, noThinking: noThinking);
+        }
+      }
       throw GeminiException('اسم الموديل "$model" مش موجود. غيّره من إعدادات الأدمن.');
     }
     if (res.statusCode != 200) {
