@@ -21,7 +21,7 @@ class Voice {
   VoidCallback? onWord;
   final ValueNotifier<bool> speaking = ValueNotifier(false);
   final ValueNotifier<bool> listening = ValueNotifier(false);
-  double rate = 0.45;
+  double rate = 0.5;
 
   Future<void> _initTts() async {
     if (_ttsReady) return;
@@ -83,6 +83,24 @@ class Voice {
     speaking.value = false;
   }
 
+  /// نطق بسرعة معيّنة (للنطق البطيء في تدريب النطق).
+  Future<void> speakAt(String text, double r) async {
+    await _initTts();
+    if (text.trim().isEmpty) return;
+    speaking.value = true;
+    await _tts.setSpeechRate(r);
+    await _tts.speak(text);
+    await _tts.setSpeechRate(rate);
+    speaking.value = false;
+  }
+
+  /// صوت افتراضي (للعبارات والاختبارات).
+  Future<void> useDefaultVoice({String accent = 'en-US'}) async {
+    await _initTts();
+    await _tts.setLanguage(accent);
+    await _tts.setPitch(1.0);
+  }
+
   Future<void> stopSpeaking() async {
     await _tts.stop();
     speaking.value = false;
@@ -111,7 +129,7 @@ class Voice {
       onResult: (SpeechRecognitionResult r) => onText(r.recognizedWords, r.finalResult),
       localeId: locale,
       listenFor: const Duration(seconds: 60),
-      pauseFor: const Duration(seconds: 4),
+      pauseFor: const Duration(milliseconds: 1800),
       listenOptions: SpeechListenOptions(
         partialResults: true,
         cancelOnError: true,

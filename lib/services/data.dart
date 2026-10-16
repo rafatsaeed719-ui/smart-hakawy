@@ -8,6 +8,10 @@ class AppUser {
   final String uid, name, email, status;
   final int sessions;
   final int lastScore;
+  final int xp;
+  final int streak;
+  final int quizzes;
+  final String lastDay;
   final DateTime? createdAt;
   AppUser({
     required this.uid,
@@ -16,8 +20,20 @@ class AppUser {
     required this.status,
     required this.sessions,
     required this.lastScore,
+    this.xp = 0,
+    this.streak = 0,
+    this.quizzes = 0,
+    this.lastDay = '',
     this.createdAt,
   });
+
+  /// عدد الأيام المتتالية (لو فوّت يوم بيرجع صفر)
+  int get liveStreak {
+    if (lastDay.isEmpty) return 0;
+    final today = Data.dayKey(DateTime.now());
+    final yesterday = Data.dayKey(DateTime.now().subtract(const Duration(days: 1)));
+    return (lastDay == today || lastDay == yesterday) ? streak : 0;
+  }
 
   bool get isAdmin => email.toLowerCase() == kAdminEmail.toLowerCase();
 
@@ -31,6 +47,10 @@ class AppUser {
       status: '${j['status'] ?? 'pending'}',
       sessions: (j['sessions'] is num) ? (j['sessions'] as num).toInt() : 0,
       lastScore: (j['lastScore'] is num) ? (j['lastScore'] as num).toInt() : -1,
+      xp: (j['xp'] is num) ? (j['xp'] as num).toInt() : 0,
+      streak: (j['streak'] is num) ? (j['streak'] as num).toInt() : 0,
+      quizzes: (j['quizzes'] is num) ? (j['quizzes'] as num).toInt() : 0,
+      lastDay: '${j['lastDay'] ?? ''}',
       createdAt: ts is Timestamp ? ts.toDate() : null,
     );
   }
@@ -145,6 +165,32 @@ class Data {
           .orderBy('createdAt', descending: true)
           .limit(100)
           .snapshots();
+
+  // ---------------- النقاط والمستويات ----------------
+  static String dayKey(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// يزوّد نقاط المستخدم ويحدّث عدّاد الأيام المتتالية.
+  static Future<void> addXp(int amount, {bool quiz = false}) async {
+    final u = _auth.currentUser;
+    if (u == null || amount <= 0) return;
+    final ref = _userRef(u.uid);
+    try {
+      final snap = await ref.get();
+      final j = snap.data() ?? {};
+      final today = dayKey(DateTime.now());
+      final yesterday = dayKey(DateTime.now().subtract(const Duration(days: 1)));
+      final last = '${j['lastDay'] ?? ''}';
+      int streak = (j['streak'] is num) ? (j['streak'] as num).toInt() : 0;
+      if (last != today) streak = (last == yesterday) ? streak + 1 : 1;
+      await ref.set({
+        'xp': FieldValue.increment(amount),
+        'streak': streak,
+        'lastDay': today,
+        if (quiz) 'quizzes': FieldValue.increment(1),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+  }
 
   // ---------------- لوحة الأدمن ----------------
   static Stream<List<AppUser>> watchUsers() => _db

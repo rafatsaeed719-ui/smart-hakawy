@@ -146,22 +146,23 @@ class Topic {
   final String emoji;
   final String ar;
   final String en;
-  const Topic(this.emoji, this.ar, this.en);
+  final String icon; // اسم أيقونة 3D
+  const Topic(this.emoji, this.ar, this.en, [this.icon = 'speech']);
 }
 
 const List<Topic> kTopics = [
-  Topic('👋', 'التعارف', 'Getting to know each other'),
-  Topic('☀️', 'يومي وروتيني', 'My daily routine'),
-  Topic('✈️', 'السفر والمطار', 'Travel and the airport'),
-  Topic('🍽️', 'في المطعم', 'Ordering food at a restaurant'),
-  Topic('🛍️', 'التسوق', 'Shopping'),
-  Topic('💼', 'انترفيو شغل', 'A job interview'),
-  Topic('🏥', 'عند الدكتور', 'At the doctor'),
-  Topic('🎬', 'أفلام ومسلسلات', 'Movies and series'),
-  Topic('⚽', 'الرياضة', 'Sports'),
-  Topic('👨‍👩‍👧', 'العيلة والأصحاب', 'Family and friends'),
-  Topic('🎯', 'أحلامي وأهدافي', 'My dreams and goals'),
-  Topic('💬', 'كلام حر', 'Free conversation about anything'),
+  Topic('👋', 'التعارف', 'Getting to know each other', 'waving'),
+  Topic('☀️', 'يومي وروتيني', 'My daily routine', 'sun'),
+  Topic('✈️', 'السفر والمطار', 'Travel and the airport', 'airplane'),
+  Topic('🍽️', 'في المطعم', 'Ordering food at a restaurant', 'fork_knife'),
+  Topic('🛍️', 'التسوق', 'Shopping', 'shopping'),
+  Topic('💼', 'انترفيو شغل', 'A job interview', 'briefcase'),
+  Topic('🏥', 'عند الدكتور', 'At the doctor', 'hospital'),
+  Topic('🎬', 'أفلام ومسلسلات', 'Movies and series', 'clapper'),
+  Topic('⚽', 'الرياضة', 'Sports', 'soccer'),
+  Topic('👨‍👩‍👧', 'العيلة والأصحاب', 'Family and friends', 'family'),
+  Topic('🎯', 'أحلامي وأهدافي', 'My dreams and goals', 'bullseye'),
+  Topic('💬', 'كلام حر', 'Free conversation about anything', 'speech'),
 ];
 
 class ChatMsg {

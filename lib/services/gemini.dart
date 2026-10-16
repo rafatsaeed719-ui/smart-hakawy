@@ -18,6 +18,19 @@ class Gemini {
   bool _discovered = false;
   Gemini(this.apiKey, this.model);
 
+  static const List<Map<String, dynamic>?> _thinkOptions = [
+    {'thinkingLevel': 'minimal'},
+    {'thinkingBudget': 0},
+    {'thinkingLevel': 'low'},
+    null,
+  ];
+  static final Map<String, int> _thinkMemo = {};
+  static int _defaultThinkIdx(String m) {
+    final v = RegExp(r'gemini-(\d+)').firstMatch(m);
+    final major = v == null ? 3 : int.parse(v.group(1)!);
+    return major >= 3 ? 0 : 1;
+  }
+
   /// المفتاح بعد شيل أي مسافات أو حروف اتكتبت بالغلط (زي حرف عربي من الكيبورد).
   String get _key => apiKey.replaceAll(RegExp(r'[^A-Za-z0-9_\-]'), '');
 
@@ -67,13 +80,15 @@ class Gemini {
     required String system,
     required List<Map<String, dynamic>> contents,
     double temperature = 0.8,
-    bool noThinking = true,
+    int? thinkIdx,
   }) async {
     if (_key.isEmpty) {
       throw GeminiException('مفتاح الذكاء الاصطناعي مش متسجل. الأدمن لازم يحطه من الإعدادات.');
     }
     final uri = Uri.parse(
         'https://generativelanguage.googleapis.com/v1beta/models/${model.trim()}:generateContent');
+    // أسرع رد: نقفل "التفكير" الزيادة بالطريقة اللي الموديل بيقبلها، ونفتكرها
+    final idx = thinkIdx ?? (_thinkMemo[model] ?? _defaultThinkIdx(model));
     final body = <String, dynamic>{
       'systemInstruction': {
         'parts': [
@@ -84,7 +99,7 @@ class Gemini {
       'generationConfig': {
         'temperature': temperature,
         'responseMimeType': 'application/json',
-        if (noThinking) 'thinkingConfig': {'thinkingBudget': 0},
+        if (_thinkOptions[idx] != null) 'thinkingConfig': _thinkOptions[idx],
       },
     };
 
@@ -102,14 +117,14 @@ class Gemini {
       throw GeminiException('مفيش اتصال بالإنترنت أو الشبكة ضعيفة. جرّب تاني.');
     }
 
-    if (res.statusCode == 400 && noThinking) {
-      // بعض الموديلات مش بتقبل إعداد التفكير — نجرب من غيره
-      final txt = utf8.decode(res.bodyBytes);
+    if (res.statusCode == 400 && idx < _thinkOptions.length - 1) {
+      final txt = utf8.decode(res.bodyBytes).toLowerCase();
       if (txt.contains('thinking')) {
         return _generate(
-            system: system, contents: contents, temperature: temperature, noThinking: false);
+            system: system, contents: contents, temperature: temperature, thinkIdx: idx + 1);
       }
     }
+    if (res.statusCode == 200) _thinkMemo[model] = idx;
     if (res.statusCode == 429) {
       throw GeminiException('وصلنا للحد المجاني المؤقت للذكاء الاصطناعي. استنى دقيقة وجرّب تاني.');
     }
@@ -124,8 +139,7 @@ class Gemini {
         final m = await _discoverModel();
         if (m != null && m != model) {
           model = m;
-          return _generate(
-              system: system, contents: contents, temperature: temperature, noThinking: noThinking);
+          return _generate(system: system, contents: contents, temperature: temperature);
         }
       }
       throw GeminiException('اسم الموديل "$model" مش موجود. غيّره من إعدادات الأدمن.');
@@ -241,6 +255,41 @@ Give up to 6 mistakes (the most important), 2-4 strengths, 3 tips, and 5 new wor
     return Evaluation.fromJson(j);
   }
 
+  /// يعمل اختبار اختيار من متعدد (10 أسئلة).
+  Future<List<QuizQ>> quiz({required String level, required String topic}) async {
+    final seed = DateTime.now().millisecondsSinceEpoch % 100000;
+    final system = '''
+You create short English quizzes for Egyptian Arabic-speaking learners. Level: $level. Theme: $topic.
+Make exactly 10 multiple-choice questions, mixing these types:
+- 3 "vocab": ask the meaning of an English word or phrase (put it in "text"); options in Arabic.
+- 3 "grammar": an English sentence with a blank "___" in "text"; options are English words/phrases.
+- 2 "translate": "question_ar" contains an Arabic sentence; options are 4 English sentences, one correct.
+- 2 "listen": "text" is a short English sentence that will be READ ALOUD (hidden from the learner); options are 4 similar English sentences, one exactly matching.
+Rules: exactly 4 options, only one correct, plausible distractors, difficulty matching the level, no repeated questions, vary vocabulary (variation seed $seed).
+"question_ar" is the instruction/question in simple Egyptian-friendly Arabic. "explain_ar" is a one-sentence Arabic explanation of the correct answer.
+Return ONLY JSON: {"questions":[{"type":"vocab","question_ar":"...","text":"...","options":["a","b","c","d"],"answer":0,"explain_ar":"..."}]}
+''';
+    final j = await _generate(
+      system: system,
+      temperature: 0.9,
+      contents: [
+        {
+          'role': 'user',
+          'parts': [
+            {'text': 'Create the quiz now.'}
+          ]
+        }
+      ],
+    );
+    final list = (j['questions'] as List? ?? const [])
+        .whereType<Map>()
+        .map((m) => QuizQ.fromJson(Map<String, dynamic>.from(m)))
+        .where((q) => q.options.length >= 2 && q.answer >= 0 && q.answer < q.options.length)
+        .toList();
+    if (list.isEmpty) throw GeminiException('مقدرناش نجهز الاختبار، جرّب تاني.');
+    return list;
+  }
+
   /// اختبار سريع للمفتاح من لوحة الأدمن.
   Future<void> test() async {
     await _generate(
@@ -253,6 +302,26 @@ Give up to 6 mistakes (the most important), 2-4 strengths, 3 tips, and 5 new wor
           ]
         }
       ],
+    );
+  }
+}
+
+class QuizQ {
+  final String type, questionAr, text, explainAr;
+  final List<String> options;
+  final int answer;
+  QuizQ(this.type, this.questionAr, this.text, this.options, this.answer, this.explainAr);
+
+  factory QuizQ.fromJson(Map<String, dynamic> j) {
+    final opts = (j['options'] as List? ?? const []).map((e) => '$e').toList();
+    final a = j['answer'];
+    return QuizQ(
+      '${j['type'] ?? 'vocab'}',
+      '${j['question_ar'] ?? ''}',
+      '${j['text'] ?? ''}',
+      opts,
+      a is num ? a.toInt() : int.tryParse('$a') ?? 0,
+      '${j['explain_ar'] ?? ''}',
     );
   }
 }

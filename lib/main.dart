@@ -9,11 +9,14 @@ import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/status_screen.dart';
 import 'services/data.dart';
+import 'services/local_store.dart';
+import 'services/voice.dart';
 import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: kFirebaseOptions);
+  Voice.I.rate = await LocalStore.speechRate() ?? 0.5;
   runApp(const HakawyApp());
 }
 

@@ -9,7 +9,8 @@ import 'evaluation_screen.dart';
 class HistoryScreen extends StatelessWidget {
   final String? uid;
   final String? title;
-  const HistoryScreen({super.key, this.uid, this.title});
+  final bool embedded;
+  const HistoryScreen({super.key, this.uid, this.title, this.embedded = false});
 
   static String _date(DateTime? d) {
     if (d == null) return '';
@@ -19,7 +20,7 @@ class HistoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(title ?? 'تقييماتي')),
+      appBar: embedded ? null : AppBar(title: Text(title ?? 'تقييماتي')),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: Data.watchSessions(uid),
         builder: (context, snap) {

@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../services/data.dart';
+import '../phrases_data.dart';
 import '../services/gemini.dart';
+import '../services/local_store.dart';
+import '../widgets/icon3d.dart';
+import 'pronunciation_screen.dart';
 import '../services/voice.dart';
 import '../theme.dart';
 import '../widgets/talking_avatar.dart';
@@ -245,6 +249,79 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Future<void> _savePhrase(Phrase p) async {
+    final ok = await LocalStore.save(p);
+    if (mounted) toast(context, ok ? 'اتحفظت في جملك ⭐' : 'الجملة دي محفوظة قبل كده');
+  }
+
+  void _msgActions(ChatMsg m) {
+    final target = m.fromUser && m.correction.isNotEmpty ? m.correction : m.text;
+    final ar = m.fromUser && m.correction.isNotEmpty ? m.correctionAr : m.ar;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
+            child: Text(target,
+                textDirection: TextDirection.ltr,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          ),
+          ListTile(
+            leading: const Icon3D('bookmark', size: 30),
+            title: const Text('احفظ الجملة في ركن العبارات'),
+            onTap: () {
+              Navigator.pop(context);
+              _savePhrase(Phrase(target, ar));
+            },
+          ),
+          ListTile(
+            leading: const Icon3D('turtle', size: 30),
+            title: const Text('اسمعها ببطء'),
+            onTap: () {
+              Navigator.pop(context);
+              Voice.I.speakAt(target, 0.3);
+            },
+          ),
+          ListTile(
+            leading: const Icon3D('microphone', size: 30),
+            title: const Text('درّب نطقها'),
+            onTap: () async {
+              Navigator.pop(context);
+              await Voice.I.cancelAll();
+              if (!mounted) return;
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => PronunciationScreen(phrases: [Phrase(target, ar)])),
+              );
+              await Voice.I.configure(widget.persona);
+            },
+          ),
+        ]),
+      ),
+    );
+  }
+
+  void _cycleSpeed() {
+    const speeds = [0.4, 0.5, 0.6, 0.7];
+    final i = speeds.indexWhere((v) => v >= Voice.I.rate - 0.01);
+    final next = speeds[(i + 1) % speeds.length];
+    setState(() => Voice.I.rate = next);
+    LocalStore.setSpeechRate(next);
+    toast(context, 'سرعة الكلام: ${_speedLabel(next)}');
+  }
+
+  String _speedLabel(double r) => r <= 0.41
+      ? 'بطيء 🐢'
+      : r <= 0.51
+          ? 'عادي'
+          : r <= 0.61
+              ? 'سريع'
+              : 'سريع جدًا 🐇';
+
   Future<bool> _confirmLeave() async {
     final r = await showDialog<String>(
       context: context,
@@ -401,6 +478,11 @@ class _ChatScreenState extends State<ChatScreen> {
                                 style: const TextStyle(color: AppColors.muted, fontSize: 13),
                               ),
                             ),
+                            IconButton(
+                              tooltip: 'سرعة الكلام',
+                              onPressed: _cycleSpeed,
+                              icon: Icon3D(Voice.I.rate < 0.5 ? 'turtle' : 'rabbit', size: 26),
+                            ),
                             TextButton.icon(
                               onPressed: () => setState(() => _showAr = !_showAr),
                               icon: Icon(_showAr ? Icons.translate_rounded : Icons.g_translate_outlined,
@@ -429,10 +511,19 @@ class _ChatScreenState extends State<ChatScreen> {
                               );
                             }
                             final m = _msgs[i];
-                            return _Bubble(
-                              msg: m,
-                              showAr: _showAr,
-                              onReplay: m.fromUser ? null : () => Voice.I.speak(m.text),
+                            return GestureDetector(
+                              onLongPress: () => _msgActions(m),
+                              child: _Bubble(
+                                msg: m,
+                                showAr: _showAr,
+                                onReplay: m.fromUser ? null : () => Voice.I.speak(m.text),
+                                onSaveCorrection: m.correction.isEmpty
+                                    ? null
+                                    : () => _savePhrase(Phrase(m.correction, m.correctionAr)),
+                                onHearCorrection: m.correction.isEmpty
+                                    ? null
+                                    : () => Voice.I.speakAt(m.correction, 0.4),
+                              ),
                             );
                           },
                         ),
@@ -629,8 +720,15 @@ class _Bubble extends StatelessWidget {
   final ChatMsg msg;
   final bool showAr;
   final bool live;
-  final VoidCallback? onReplay;
-  const _Bubble({required this.msg, required this.showAr, this.live = false, this.onReplay});
+  final VoidCallback? onReplay, onSaveCorrection, onHearCorrection;
+  const _Bubble({
+    required this.msg,
+    required this.showAr,
+    this.live = false,
+    this.onReplay,
+    this.onSaveCorrection,
+    this.onHearCorrection,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -692,8 +790,31 @@ class _Bubble extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text('💡 الأصح تقول:',
-                          style: TextStyle(fontSize: 12.5, color: AppColors.accent, fontWeight: FontWeight.w700)),
+                      Row(children: [
+                        const Icon3D('light_bulb', size: 20),
+                        const SizedBox(width: 4),
+                        const Expanded(
+                          child: Text('الأصح تقول:',
+                              style: TextStyle(
+                                  fontSize: 12.5, color: AppColors.accent, fontWeight: FontWeight.w700)),
+                        ),
+                        if (onHearCorrection != null)
+                          InkWell(
+                            onTap: onHearCorrection,
+                            child: const Padding(
+                              padding: EdgeInsets.all(4),
+                              child: Icon(Icons.volume_up_rounded, size: 20, color: AppColors.accent),
+                            ),
+                          ),
+                        if (onSaveCorrection != null)
+                          InkWell(
+                            onTap: onSaveCorrection,
+                            child: const Padding(
+                              padding: EdgeInsets.all(4),
+                              child: Icon(Icons.star_border_rounded, size: 20, color: AppColors.accent),
+                            ),
+                          ),
+                      ]),
                       const SizedBox(height: 4),
                       Text(msg.correction,
                           textDirection: TextDirection.ltr,

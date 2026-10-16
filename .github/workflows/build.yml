@@ -31,6 +31,9 @@ jobs:
           rm -rf test
           python3 tool/patch_android.py
 
+      - name: 3D icons
+        run: python3 tool/get_3d_icons.py
+
       - name: Get packages
         run: flutter pub get
 

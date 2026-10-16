@@ -1,7 +1,7 @@
 name: hakawy
 description: "اسمارت حكاوي - اتكلم إنجليزي مع شخصية بالذكاء الاصطناعي"
 publish_to: 'none'
-version: 1.0.1+2
+version: 1.1.0+3
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -29,6 +29,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/avatars/
+    - assets/3d/
 
 flutter_launcher_icons:
   android: true

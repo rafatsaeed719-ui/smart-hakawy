@@ -6,6 +6,8 @@ import '../models.dart';
 import '../services/data.dart';
 import '../services/gemini.dart';
 import '../theme.dart';
+import '../progress.dart';
+import '../widgets/icon3d.dart';
 import '../widgets/persona_photo.dart';
 import 'topic_screen.dart';
 
@@ -33,6 +35,7 @@ class EvaluationScreen extends StatefulWidget {
 class _EvaluationScreenState extends State<EvaluationScreen> {
   Evaluation? _eval;
   String? _error;
+  int _xp = 0;
 
   @override
   void initState() {
@@ -53,6 +56,8 @@ class _EvaluationScreenState extends State<EvaluationScreen> {
       );
       if (!mounted) return;
       setState(() => _eval = e);
+      _xp = Xp.forCall(e.overall, widget.messages.where((m) => m.fromUser).length);
+      Data.addXp(_xp);
       try {
         await Data.saveSession(
           personaName: widget.persona.name,
@@ -75,14 +80,36 @@ class _EvaluationScreenState extends State<EvaluationScreen> {
       body: _eval != null
           ? EvaluationView(
               eval: _eval!,
-              header: Row(children: [
-                ClipOval(child: PersonaPhoto(persona: widget.persona, width: 44, height: 44)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'مكالمتك مع ${widget.persona.name} · ${widget.topic.ar} · ${widget.minutes} دقيقة',
-                    style: const TextStyle(color: AppColors.muted),
+              header: Column(children: [
+                Row(children: [
+                  ClipOval(child: PersonaPhoto(persona: widget.persona, width: 44, height: 44)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'مكالمتك مع ${widget.persona.name} · ${widget.topic.ar} · ${widget.minutes} دقيقة',
+                      style: const TextStyle(color: AppColors.muted),
+                    ),
                   ),
+                ]),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(children: [
+                    Icon3D(_eval!.overall >= 75 ? 'party' : 'muscle', size: 50),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(encouragementFor(_eval!.overall), style: const TextStyle(height: 1.55)),
+                        const SizedBox(height: 4),
+                        Text('+$_xp نقطة ✨',
+                            style: const TextStyle(color: AppColors.accent, fontWeight: FontWeight.w900)),
+                      ]),
+                    ),
+                  ]),
                 ),
               ]),
               footer: Column(children: [
@@ -184,11 +211,11 @@ class EvaluationView extends StatelessWidget {
           _Bar('الفهم والرد (Comprehension)', e.comprehension, _scoreColor(e.comprehension)),
         ]),
         if (e.strengths.isNotEmpty)
-          _Section('👏 نقاط قوتك', [
+          _Section('نقاط قوتك', icon: 'clap', [
             for (final s in e.strengths) _Bullet(s),
           ]),
         if (e.mistakes.isNotEmpty)
-          _Section('✏️ أخطاء نصلّحها', [
+          _Section('أخطاء نصلّحها', icon: 'pencil', [
             for (final m in e.mistakes)
               Container(
                 margin: const EdgeInsets.only(bottom: 10),
@@ -214,11 +241,11 @@ class EvaluationView extends StatelessWidget {
               ),
           ]),
         if (e.tips.isNotEmpty)
-          _Section('🎯 نصايح للمرة الجاية', [
+          _Section('نصايح للمرة الجاية', icon: 'bullseye', [
             for (final s in e.tips) _Bullet(s),
           ]),
         if (e.newWords.isNotEmpty)
-          _Section('📚 كلمات جديدة تتعلمها', [
+          _Section('كلمات جديدة تتعلمها', icon: 'books', [
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -252,13 +279,18 @@ class _Card extends StatelessWidget {
 
 class _Section extends StatelessWidget {
   final String title;
+  final String icon;
   final List<Widget> children;
-  const _Section(this.title, this.children);
+  const _Section(this.title, this.children, {this.icon = 'sparkles'});
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(top: 22),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          Row(children: [
+            Icon3D(icon, size: 32),
+            const SizedBox(width: 8),
+            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          ]),
           const SizedBox(height: 10),
           ...children,
         ]),

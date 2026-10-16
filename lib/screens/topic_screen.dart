@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../models.dart';
+import '../services/local_store.dart';
 import '../services/voice.dart';
+import '../widgets/icon3d.dart';
 import '../theme.dart';
 import '../widgets/persona_photo.dart';
 import 'chat_screen.dart';
@@ -23,13 +25,14 @@ class _TopicScreenState extends State<TopicScreen> {
   int _topic = 0;
   final _custom = TextEditingController();
   String _level = 'Beginner';
-  double _rate = 0.42;
+  late double _rate = Voice.I.rate;
   bool _showAr = true;
 
   void _start() {
     final custom = _custom.text.trim();
     final Topic topic = custom.isNotEmpty ? Topic('✍️', custom, custom) : kTopics[_topic];
     Voice.I.rate = _rate;
+    LocalStore.setSpeechRate(_rate);
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
@@ -89,7 +92,7 @@ class _TopicScreenState extends State<TopicScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(t.emoji, style: const TextStyle(fontSize: 28)),
+                      Icon3D(t.icon, size: 40),
                       const SizedBox(height: 6),
                       Text(t.ar,
                           textAlign: TextAlign.center,
@@ -128,9 +131,9 @@ class _TopicScreenState extends State<TopicScreen> {
             Expanded(
               child: Slider(
                 value: _rate,
-                min: 0.25,
-                max: 0.6,
-                divisions: 7,
+                min: 0.3,
+                max: 0.75,
+                divisions: 9,
                 onChanged: (v) => setState(() => _rate = v),
               ),
             ),
